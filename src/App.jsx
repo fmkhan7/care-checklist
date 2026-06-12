@@ -168,6 +168,7 @@ export default function CareChecklist() {
 
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState("");
 
   const formatDate = (iso) => {
     const [y, m, d] = iso.split("-");
@@ -180,7 +181,24 @@ export default function CareChecklist() {
   const qualLabel = { Sufficient: "😊 Sufficient", Medium: "😐 Medium", Less: "😞 Less" };
   const moodEmoji = { Active: "😊", Dull: "😐", Sleepy: "😴", Irritated: "😠" };
 
+  const validateRequiredFields = () => {
+    const missing = [];
+
+    if (!date) missing.push("Date");
+    if (!shift) missing.push("Shift");
+    if (!caregiver) missing.push("Your name");
+
+    if (missing.length) {
+      setError(`Please fill in: ${missing.join(", ")}.`);
+      return false;
+    }
+
+    setError("");
+    return true;
+  };
+
   const generate = () => {
+    if (!validateRequiredFields()) return;
     const lines = [
       `📋 *DAILY HEALTH & CARE UPDATE*`,
       `📅 ${formatDate(date)}${shift ? " · " + shift + " shift" : ""}${caregiver ? " · 👤 " + caregiver : ""}`,
@@ -430,6 +448,23 @@ export default function CareChecklist() {
         </Card>
 
         {/* ── generate button ── */}
+        {error && (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              color: "#b91c1c",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
         <button
           onClick={generate}
           style={{
