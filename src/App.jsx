@@ -1,4 +1,5 @@
 import { useState } from "react";
+import caregiverOptions from "./caregivers.json";
 
 /* ── tiny helpers ── */
 const YesNo = ({ value, onChange }) => (
@@ -313,20 +314,26 @@ export default function CareChecklist() {
           <label style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", display: "block", marginBottom: 4 }}>
             YOUR NAME
           </label>
-          <input
-            type="text"
+          <select
             value={caregiver}
             onChange={(e) => setCaregiver(e.target.value)}
-            placeholder=""
             style={{
               width: "100%",
               padding: "7px 9px",
               borderRadius: 8,
               border: "1.5px solid #e5e7eb",
               fontSize: 13,
+              background: "white",
               boxSizing: "border-box",
             }}
-          />
+          >
+            <option value="">– select –</option>
+            {caregiverOptions.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* ── 1. sleep ── */}
