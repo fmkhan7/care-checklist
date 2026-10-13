@@ -303,10 +303,6 @@ export default function CareChecklist() {
     if (ok) setTimeout(() => setCopied(false), 3000);
   };
 
-  const shareWhatsApp = () => {
-    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener");
-  };
-
   return (
     <div
       style={{
@@ -600,29 +596,11 @@ export default function CareChecklist() {
                 {renderWhatsApp(message)}
               </pre>
             </div>
-            <button
-              onClick={shareWhatsApp}
-              style={{
-                width: "100%",
-                marginTop: 10,
-                padding: 13,
-                borderRadius: 14,
-                border: "none",
-                background: "#25d366",
-                color: "white",
-                fontSize: 15,
-                fontWeight: 700,
-                cursor: "pointer",
-                boxShadow: "0 4px 14px rgba(37,211,102,0.35)",
-              }}
-            >
-              📤 Send on WhatsApp
-            </button>
-            <div style={{ textAlign: "center", marginTop: 6 }}>
-              <span style={{ fontSize: 11, color: copyFailed ? "#b91c1c" : "#6b7280" }}>
+            <div style={{ textAlign: "right", marginTop: 4, paddingRight: 14 }}>
+              <span style={{ fontSize: copyFailed ? 11 : 10, color: copyFailed ? "#b91c1c" : "#6b7280" }}>
                 {copyFailed
                   ? "Couldn't copy automatically – press and hold the message to copy it."
-                  : "Opens WhatsApp to pick a chat · or tap Copy and paste it yourself"}
+                  : "Tap Copy → open WhatsApp → paste & send"}
               </span>
             </div>
           </div>
