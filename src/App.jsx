@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import caregiverOptions from "./caregivers.json";
 
 /* ── tiny helpers ── */
@@ -135,12 +135,71 @@ const ChoiceGrid = ({ options, value, onChange, cols = 3 }) => (
   </div>
 );
 
+// Local-time YYYY-MM-DD (toISOString() would give the UTC date, which is
+// yesterday's date for early-morning entries in timezones ahead of UTC).
+const localISODate = () => {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+const CAREGIVER_KEY = "care-checklist:caregiver";
+
+const loadCaregiver = () => {
+  try {
+    const saved = localStorage.getItem(CAREGIVER_KEY);
+    return caregiverOptions.includes(saved) ? saved : "";
+  } catch {
+    return "";
+  }
+};
+
+// Render WhatsApp *bold* and _italic_ in the preview so it looks like the sent message.
+const renderWhatsApp = (text) =>
+  text.split(/(\*[^*\n]+\*|_[^_\n]+_)/g).map((part, i) => {
+    if (/^\*[^*\n]+\*$/.test(part)) return <strong key={i}>{part.slice(1, -1)}</strong>;
+    if (/^_[^_\n]+_$/.test(part)) return <em key={i}>{part.slice(1, -1)}</em>;
+    return part;
+  });
+
+const copyText = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Fallback for browsers / contexts without the async clipboard API
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch {
+      ok = false;
+    }
+    document.body.removeChild(ta);
+    return ok;
+  }
+};
+
 /* ── main component ── */
 export default function CareChecklist() {
-  const todayISO = new Date().toISOString().split("T")[0];
-  const [date, setDate] = useState(todayISO);
+  const [date, setDate] = useState(localISODate);
   const [shift, setShift] = useState("");
-  const [caregiver, setCaregiver] = useState("");
+  const [caregiver, setCaregiver] = useState(loadCaregiver);
+
+  // Remember the caregiver on this device so they don't have to pick their name every time
+  useEffect(() => {
+    try {
+      if (caregiver) localStorage.setItem(CAREGIVER_KEY, caregiver);
+    } catch {
+      /* storage unavailable – ignore */
+    }
+  }, [caregiver]);
 
   const [sleep, setSleep] = useState("");
   const [sleepNotes, setSleepNotes] = useState("");
@@ -166,9 +225,9 @@ export default function CareChecklist() {
 
   const [additionalNotes, setAdditionalNotes] = useState("");
 
-  const [message, setMessage] = useState("");
+  const [submitted, setSubmitted] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState("");
+  const [copyFailed, setCopyFailed] = useState(false);
 
   const formatDate = (iso) => {
     const [y, m, d] = iso.split("-");
@@ -178,72 +237,74 @@ export default function CareChecklist() {
 
   const tick = (v) => (v ? "✅" : "❌");
   const yn = (v) => v || "—";
+  const ynIcon = (v) => (v === "Yes" ? "✅" : v === "No" ? "❌" : "—");
   const qualLabel = { Sufficient: "😊 Sufficient", Medium: "😐 Medium", Less: "😞 Less" };
   const moodEmoji = { Active: "😊", Dull: "😐", Sleepy: "😴", Irritated: "😠" };
+  const note = (v) => (v.trim() ? `Notes: ${v.trim()}` : null);
 
-  const validateRequiredFields = () => {
-    const missing = [];
+  const missing = [];
+  if (!date) missing.push("Date");
+  if (!shift) missing.push("Shift");
+  if (!caregiver) missing.push("Your name");
+  const error = submitted && missing.length ? `Please fill in: ${missing.join(", ")}.` : "";
 
-    if (!date) missing.push("Date");
-    if (!shift) missing.push("Shift");
-    if (!caregiver) missing.push("Your name");
-
-    if (missing.length) {
-      setError(`Please fill in: ${missing.join(", ")}.`);
-      return false;
-    }
-
-    setError("");
-    return true;
-  };
-
-  const generate = () => {
-    if (!validateRequiredFields()) return;
-    const lines = [
+  const buildMessage = () =>
+    [
       `📋 *DAILY HEALTH & CARE UPDATE*`,
-      `📅 ${formatDate(date)}${shift ? " · " + shift + " shift" : ""}${caregiver ? " · 👤 " + caregiver : ""}`,
+      `📅 ${formatDate(date)} · ${shift} shift · 👤 ${caregiver}`,
       ``,
       `1️⃣ *SLEEP* 😴`,
-      `Enough sleep: ${yn(sleep)}${sleepNotes ? "\nNotes: " + sleepNotes : ""}`,
+      `Enough sleep: ${yn(sleep)}`,
+      note(sleepNotes),
       ``,
       `2️⃣ *MEALS* 🍽️`,
-      `Breakfast ${breakfast === "Yes" ? "✅" : breakfast === "No" ? "❌" : "—"} · Lunch ${lunch === "Yes" ? "✅" : lunch === "No" ? "❌" : "—"} · Dinner ${dinner === "Yes" ? "✅" : dinner === "No" ? "❌" : "—"}`,
-      foodQuality ? `Quality: ${qualLabel[foodQuality]}` : `Quality: —`,
-      mealNotes ? `Notes: ${mealNotes}` : null,
+      `Breakfast ${ynIcon(breakfast)} · Lunch ${ynIcon(lunch)} · Dinner ${ynIcon(dinner)}`,
+      `Quality: ${foodQuality ? qualLabel[foodQuality] : "—"}`,
+      note(mealNotes),
       ``,
       `3️⃣ *CLEANING & SANITATION* 🧼`,
       `Diaper change: ${tick(diaperChange)} · Body sponging: ${tick(bodyCleaning)}`,
-      cleaningNotes ? `Notes: ${cleaningNotes}` : null,
+      note(cleaningNotes),
       ``,
       `4️⃣ *MEDICATION* 💊`,
-      `All medicines on time: ${yn(medication)}${medNotes ? "\nNotes: " + medNotes : ""}`,
+      `All medicines on time: ${yn(medication)}`,
+      note(medNotes),
       ``,
-      `5️⃣ *MOOD & CONDITION*`,
-      `${mood ? moodEmoji[mood] + " " + mood : "—"}${moodNotes ? "\nNotes: " + moodNotes : ""}`,
+      `5️⃣ *MOOD & CONDITION* 🙂`,
+      mood ? `${moodEmoji[mood]} ${mood}` : "—",
+      note(moodNotes),
       ``,
       `6️⃣ *EXERCISE / MOVEMENT* 🏃`,
-      `Movement done: ${yn(exercise)}${exerciseNotes ? "\nNotes: " + exerciseNotes : ""}`,
-      additionalNotes ? `` : null,
-      additionalNotes ? `7️⃣ *ADDITIONAL NOTES* 📝` : null,
-      additionalNotes || null,
+      `Movement done: ${yn(exercise)}`,
+      note(exerciseNotes),
+      ...(additionalNotes.trim() ? [``, `7️⃣ *ADDITIONAL NOTES* 📝`, additionalNotes.trim()] : []),
       ``,
       `🤲 _May Allah grant Papa good health and recovery. Ameen._`,
     ]
       .filter((l) => l !== null)
       .join("\n");
 
-    setMessage(lines);
+  // Once generated, the message stays in sync with any later edits to the form
+  const message = submitted && !missing.length ? buildMessage() : "";
+
+  const generate = () => {
+    setSubmitted(true);
     setCopied(false);
+    if (missing.length) return;
     setTimeout(() => {
       document.getElementById("msg-area")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 100);
   };
 
-  const copy = () => {
-    navigator.clipboard.writeText(message).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 3000);
-    });
+  const copy = async () => {
+    const ok = await copyText(message);
+    setCopied(ok);
+    setCopyFailed(!ok);
+    if (ok) setTimeout(() => setCopied(false), 3000);
+  };
+
+  const shareWhatsApp = () => {
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener");
   };
 
   return (
@@ -416,7 +477,7 @@ export default function CareChecklist() {
         </Card>
 
         {/* ── 5. mood ── */}
-        <Card num="5" accent="#be185d" emoji="" title="MOOD & CONDITION">
+        <Card num="5" accent="#be185d" emoji="🙂" title="MOOD & CONDITION">
           <ChoiceGrid
             value={mood}
             onChange={setMood}
@@ -536,12 +597,33 @@ export default function CareChecklist() {
                   margin: 0,
                 }}
               >
-                {message}
+                {renderWhatsApp(message)}
               </pre>
             </div>
-            {/* WhatsApp bubble tail */}
-            <div style={{ textAlign: "right", marginTop: -2, paddingRight: 14 }}>
-              <span style={{ fontSize: 10, color: "#6b7280" }}>Tap Copy → open WhatsApp → paste &amp; send</span>
+            <button
+              onClick={shareWhatsApp}
+              style={{
+                width: "100%",
+                marginTop: 10,
+                padding: 13,
+                borderRadius: 14,
+                border: "none",
+                background: "#25d366",
+                color: "white",
+                fontSize: 15,
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 4px 14px rgba(37,211,102,0.35)",
+              }}
+            >
+              📤 Send on WhatsApp
+            </button>
+            <div style={{ textAlign: "center", marginTop: 6 }}>
+              <span style={{ fontSize: 11, color: copyFailed ? "#b91c1c" : "#6b7280" }}>
+                {copyFailed
+                  ? "Couldn't copy automatically – press and hold the message to copy it."
+                  : "Opens WhatsApp to pick a chat · or tap Copy and paste it yourself"}
+              </span>
             </div>
           </div>
         )}
